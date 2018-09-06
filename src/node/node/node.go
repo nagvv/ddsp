@@ -29,6 +29,8 @@ type Config struct {
 // Node is a Node service.
 type Node struct {
 	// TODO: implement
+	cfg Config
+	hbch chan int
 }
 
 // New creates a new Node with a given cfg.
@@ -36,7 +38,7 @@ type Node struct {
 // New создает новый Node с данным cfg.
 func New(cfg Config) *Node {
 	// TODO: implement
-	return nil
+	return &Node{cfg, make(chan int)}
 }
 
 // Hearbeats runs heartbeats from node to a router
@@ -46,6 +48,17 @@ func New(cfg Config) *Node {
 // через каждый интервал времени, заданный в cfg.Heartbeat.
 func (node *Node) Heartbeats() {
 	// TODO: implement
+	go func(cfg Config, ch chan int) {//FIXME: maybe use Ticker?
+		for {
+			time.Sleep(cfg.Heartbeat)
+			select{
+			case <-ch:
+				return
+			default:
+				cfg.Client.Heartbeat(cfg.Router, cfg.Addr)
+			}
+		}
+	}(node.cfg, node.hbch)
 }
 
 // Stop stops heartbeats
@@ -53,6 +66,7 @@ func (node *Node) Heartbeats() {
 // Stop останавливает отправку heartbeats.
 func (node *Node) Stop() {
 	// TODO: implement
+	node.hbch <- 1
 }
 
 // Put an item to the node if an item for the given key doesn't exist.
