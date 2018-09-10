@@ -5,6 +5,8 @@ import (
 
 	router "router/client"
 	"storage"
+
+	"sync"
 )
 
 // Config stores configuration for a Node service.
@@ -31,6 +33,7 @@ type Node struct {
 	// TODO: implement
 	cfg Config
 	hbch chan int
+	Storage sync.Map
 }
 
 // New creates a new Node with a given cfg.
@@ -38,7 +41,7 @@ type Node struct {
 // New создает новый Node с данным cfg.
 func New(cfg Config) *Node {
 	// TODO: implement
-	return &Node{cfg, make(chan int)}
+	return &Node{cfg: cfg, hbch: make(chan int)}
 }
 
 // Hearbeats runs heartbeats from node to a router
@@ -76,7 +79,12 @@ func (node *Node) Stop() {
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
 	// TODO: implement
-	return nil
+	_, isExist := node.Storage.LoadOrStore(k, d)
+	if isExist {
+		return storage.ErrRecordExists
+	}else{
+		return nil
+	}
 }
 
 // Del an item from the node if an item exists for the given key.
@@ -86,7 +94,13 @@ func (node *Node) Put(k storage.RecordID, d []byte) error {
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Del(k storage.RecordID) error {
 	// TODO: implement
-	return nil
+	_, isExist := node.Storage.Load(k)
+	if isExist {
+		node.Storage.Delete(k)
+		return nil
+	}else{
+		return storage.ErrRecordNotFound
+	}
 }
 
 // Get an item from the node if an item exists for the given key.
@@ -96,5 +110,10 @@ func (node *Node) Del(k storage.RecordID) error {
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
 	// TODO: implement
-	return nil, nil
+	b, isExist := node.Storage.Load(k)
+	if (isExist) {
+		return b.([]byte), nil
+	}else{
+		return nil, storage.ErrRecordNotFound
+	}
 }
