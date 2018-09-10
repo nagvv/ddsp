@@ -31,6 +31,7 @@ type Config struct {
 
 // Router is a router service.
 type Router struct {
+	cfg Config
 	// TODO: implement
 }
 
@@ -43,7 +44,11 @@ type Router struct {
 // меньше чем storage.ReplicationFactor nodes.
 func New(cfg Config) (*Router, error) {
 	// TODO: implement
-	return nil, nil
+	if len(cfg.Nodes) < storage.ReplicationFactor {
+		return nil, storage.ErrNotEnoughDaemons
+	}else {
+		return &Router{cfg}, nil
+	}
 }
 
 // Hearbeat registers node in the router.
@@ -54,7 +59,13 @@ func New(cfg Config) (*Router, error) {
 // обслуживается Router.
 func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 	// TODO: implement
-	return nil
+	for _, v := range r.cfg.Nodes{
+		if v == node {
+			//register node to-doo!
+			return nil
+		}
+	}
+	return storage.ErrUnknownDaemon
 }
 
 // NodesFind returns a list of available nodes, where record with associated key k
@@ -66,6 +77,7 @@ func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 // если меньше, чем storage.MinRedundancy найдено.
 func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
 	// TODO: implement
+	//РАНДЕВООХЭШ!
 	return nil, nil
 }
 
@@ -74,5 +86,5 @@ func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
 // List возвращает cписок всех node, обслуживаемых Router.
 func (r *Router) List() []storage.ServiceAddr {
 	// TODO: implement
-	return nil
+	return r.cfg.Nodes
 }
