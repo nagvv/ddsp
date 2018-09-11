@@ -30,7 +30,6 @@ type Config struct {
 
 // Node is a Node service.
 type Node struct {
-	// TODO: implement
 	cfg     Config
 	hbch    chan int
 	Storage sync.Map
@@ -40,7 +39,6 @@ type Node struct {
 //
 // New создает новый Node с данным cfg.
 func New(cfg Config) *Node {
-	// TODO: implement
 	return &Node{cfg: cfg, hbch: make(chan int)}
 }
 
@@ -50,25 +48,23 @@ func New(cfg Config) *Node {
 // Hearbeats запускает отправку heartbeats от node к router
 // через каждый интервал времени, заданный в cfg.Heartbeat.
 func (node *Node) Heartbeats() {
-	// TODO: implement
-	go func(cfg Config, ch chan int) { //FIXME: maybe use Ticker?
+	go func() { // FIXME: maybe use Ticker?
 		for {
-			time.Sleep(cfg.Heartbeat)
+			time.Sleep(node.cfg.Heartbeat)
 			select {
-			case <-ch:
+			case <-node.hbch:
 				return
 			default:
-				cfg.Client.Heartbeat(cfg.Router, cfg.Addr)
+				node.cfg.Client.Heartbeat(node.cfg.Router, node.cfg.Addr)
 			}
 		}
-	}(node.cfg, node.hbch)
+	}()
 }
 
 // Stop stops heartbeats
 //
 // Stop останавливает отправку heartbeats.
 func (node *Node) Stop() {
-	// TODO: implement
 	node.hbch <- 1
 }
 
@@ -78,14 +74,14 @@ func (node *Node) Stop() {
 // Put -- добавить запись в node, если запись для данного ключа
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
-	// TODO: implement
-	_, isExist := node.Storage.LoadOrStore(k, d)
-	if isExist {
+	if _, loaded := node.Storage.LoadOrStore(k, d); loaded {
 		return storage.ErrRecordExists
-	} else {
-		return nil
 	}
+	return nil
 }
+
+// delLock makes Del() atomic
+var delLock sync.Mutex
 
 // Del an item from the node if an item exists for the given key.
 // Returns the storage.ErrRecordNotFound error otherwise.
@@ -93,14 +89,13 @@ func (node *Node) Put(k storage.RecordID, d []byte) error {
 // Del -- удалить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Del(k storage.RecordID) error {
-	// TODO: implement
-	_, isExist := node.Storage.Load(k)
-	if isExist {
+	delLock.Lock()
+	defer delLock.Unlock()
+	if _, ok := node.Storage.Load(k); ok {
 		node.Storage.Delete(k)
 		return nil
-	} else {
-		return storage.ErrRecordNotFound
 	}
+	return storage.ErrRecordNotFound
 }
 
 // Get an item from the node if an item exists for the given key.
@@ -109,9 +104,7 @@ func (node *Node) Del(k storage.RecordID) error {
 // Get -- получить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
-	// TODO: implement
-	b, isExist := node.Storage.Load(k)
-	if isExist {
+	if b, ok := node.Storage.Load(k); ok {
 		return b.([]byte), nil
 	} else {
 		return nil, storage.ErrRecordNotFound
