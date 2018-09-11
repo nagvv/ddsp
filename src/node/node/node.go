@@ -31,8 +31,8 @@ type Config struct {
 // Node is a Node service.
 type Node struct {
 	// TODO: implement
-	cfg Config
-	hbch chan int
+	cfg     Config
+	hbch    chan int
 	Storage sync.Map
 }
 
@@ -51,10 +51,10 @@ func New(cfg Config) *Node {
 // через каждый интервал времени, заданный в cfg.Heartbeat.
 func (node *Node) Heartbeats() {
 	// TODO: implement
-	go func(cfg Config, ch chan int) {//FIXME: maybe use Ticker?
+	go func(cfg Config, ch chan int) { //FIXME: maybe use Ticker?
 		for {
 			time.Sleep(cfg.Heartbeat)
-			select{
+			select {
 			case <-ch:
 				return
 			default:
@@ -82,7 +82,7 @@ func (node *Node) Put(k storage.RecordID, d []byte) error {
 	_, isExist := node.Storage.LoadOrStore(k, d)
 	if isExist {
 		return storage.ErrRecordExists
-	}else{
+	} else {
 		return nil
 	}
 }
@@ -98,7 +98,7 @@ func (node *Node) Del(k storage.RecordID) error {
 	if isExist {
 		node.Storage.Delete(k)
 		return nil
-	}else{
+	} else {
 		return storage.ErrRecordNotFound
 	}
 }
@@ -111,9 +111,9 @@ func (node *Node) Del(k storage.RecordID) error {
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
 	// TODO: implement
 	b, isExist := node.Storage.Load(k)
-	if (isExist) {
+	if isExist {
 		return b.([]byte), nil
-	}else{
+	} else {
 		return nil, storage.ErrRecordNotFound
 	}
 }

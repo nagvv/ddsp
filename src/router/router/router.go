@@ -46,7 +46,7 @@ func New(cfg Config) (*Router, error) {
 	// TODO: implement
 	if len(cfg.Nodes) < storage.ReplicationFactor {
 		return nil, storage.ErrNotEnoughDaemons
-	}else {
+	} else {
 		return &Router{cfg}, nil
 	}
 }
@@ -59,7 +59,7 @@ func New(cfg Config) (*Router, error) {
 // обслуживается Router.
 func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 	// TODO: implement
-	for _, v := range r.cfg.Nodes{
+	for _, v := range r.cfg.Nodes {
 		if v == node {
 			//register node to-doo!
 			return nil
