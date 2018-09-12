@@ -32,14 +32,15 @@ type Config struct {
 type Node struct {
 	cfg     Config
 	hbch    chan int
-	Storage sync.Map
+	Storage map[storage.RecordID][]byte
+	Sync    sync.RWMutex
 }
 
 // New creates a new Node with a given cfg.
 //
 // New создает новый Node с данным cfg.
 func New(cfg Config) *Node {
-	return &Node{cfg: cfg, hbch: make(chan int)}
+	return &Node{cfg: cfg, hbch: make(chan int), Storage: make(map[storage.RecordID][]byte)}
 }
 
 // Hearbeats runs heartbeats from node to a router
@@ -74,14 +75,14 @@ func (node *Node) Stop() {
 // Put -- добавить запись в node, если запись для данного ключа
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
-	if _, loaded := node.Storage.LoadOrStore(k, d); loaded {
+	node.Sync.Lock()
+	defer node.Sync.Unlock()
+	if _, isPresent := node.Storage[k]; isPresent {
 		return storage.ErrRecordExists
 	}
+	node.Storage[k] = d
 	return nil
 }
-
-// delLock makes Del() atomic
-var delLock sync.Mutex
 
 // Del an item from the node if an item exists for the given key.
 // Returns the storage.ErrRecordNotFound error otherwise.
@@ -89,13 +90,13 @@ var delLock sync.Mutex
 // Del -- удалить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Del(k storage.RecordID) error {
-	delLock.Lock()
-	defer delLock.Unlock()
-	if _, ok := node.Storage.Load(k); ok {
-		node.Storage.Delete(k)
-		return nil
+	node.Sync.Lock()
+	defer node.Sync.Unlock()
+	if _, isPresent := node.Storage[k]; !isPresent {
+		return storage.ErrRecordNotFound
 	}
-	return storage.ErrRecordNotFound
+	delete(node.Storage, k)
+	return nil
 }
 
 // Get an item from the node if an item exists for the given key.
@@ -104,9 +105,11 @@ func (node *Node) Del(k storage.RecordID) error {
 // Get -- получить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
-	if b, ok := node.Storage.Load(k); ok {
-		return b.([]byte), nil
-	} else {
+	node.Sync.RLock()
+	defer node.Sync.RUnlock()
+	d, isPresent := node.Storage[k]
+	if !isPresent {
 		return nil, storage.ErrRecordNotFound
 	}
+	return d, nil
 }
