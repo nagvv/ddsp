@@ -1,12 +1,11 @@
 package node
 
 import (
+	"sync"
 	"time"
 
 	router "router/client"
 	"storage"
-
-	"sync"
 )
 
 // Config stores configuration for a Node service.
@@ -30,10 +29,10 @@ type Config struct {
 
 // Node is a Node service.
 type Node struct {
+	sync.RWMutex
 	cfg     Config
 	hbch    chan int
 	Storage map[storage.RecordID][]byte
-	Sync    sync.RWMutex
 }
 
 // New creates a new Node with a given cfg.
@@ -49,7 +48,7 @@ func New(cfg Config) *Node {
 // Hearbeats запускает отправку heartbeats от node к router
 // через каждый интервал времени, заданный в cfg.Heartbeat.
 func (node *Node) Heartbeats() {
-	go func() { // FIXME: maybe use Ticker?
+	go func() {
 		for {
 			time.Sleep(node.cfg.Heartbeat)
 			select {
@@ -75,9 +74,9 @@ func (node *Node) Stop() {
 // Put -- добавить запись в node, если запись для данного ключа
 // не существует. Иначе вернуть ошибку storage.ErrRecordExists.
 func (node *Node) Put(k storage.RecordID, d []byte) error {
-	node.Sync.Lock()
-	defer node.Sync.Unlock()
-	if _, isPresent := node.Storage[k]; isPresent {
+	node.Lock()
+	defer node.Unlock()
+	if _, ok := node.Storage[k]; ok {
 		return storage.ErrRecordExists
 	}
 	node.Storage[k] = d
@@ -90,9 +89,9 @@ func (node *Node) Put(k storage.RecordID, d []byte) error {
 // Del -- удалить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Del(k storage.RecordID) error {
-	node.Sync.Lock()
-	defer node.Sync.Unlock()
-	if _, isPresent := node.Storage[k]; !isPresent {
+	node.Lock()
+	defer node.Unlock()
+	if _, ok := node.Storage[k]; !ok {
 		return storage.ErrRecordNotFound
 	}
 	delete(node.Storage, k)
@@ -105,10 +104,10 @@ func (node *Node) Del(k storage.RecordID) error {
 // Get -- получить запись из node, если запись для данного ключа
 // существует. Иначе вернуть ошибку storage.ErrRecordNotFound.
 func (node *Node) Get(k storage.RecordID) ([]byte, error) {
-	node.Sync.RLock()
-	defer node.Sync.RUnlock()
-	d, isPresent := node.Storage[k]
-	if !isPresent {
+	node.RLock()
+	defer node.RUnlock()
+	d, ok := node.Storage[k]
+	if !ok {
 		return nil, storage.ErrRecordNotFound
 	}
 	return d, nil
