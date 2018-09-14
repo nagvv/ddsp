@@ -31,7 +31,7 @@ type Config struct {
 type Node struct {
 	sync.RWMutex
 	cfg     Config
-	hbch    chan int
+	hbch    chan struct{}
 	Storage map[storage.RecordID][]byte
 }
 
@@ -39,7 +39,7 @@ type Node struct {
 //
 // New создает новый Node с данным cfg.
 func New(cfg Config) *Node {
-	return &Node{cfg: cfg, hbch: make(chan int), Storage: make(map[storage.RecordID][]byte)}
+	return &Node{cfg: cfg, hbch: make(chan struct{}), Storage: make(map[storage.RecordID][]byte)}
 }
 
 // Hearbeats runs heartbeats from node to a router
@@ -65,7 +65,7 @@ func (node *Node) Heartbeats() {
 //
 // Stop останавливает отправку heartbeats.
 func (node *Node) Stop() {
-	node.hbch <- 1
+	node.hbch <- struct{}{}
 }
 
 // Put an item to the node if an item for the given key doesn't exist.
