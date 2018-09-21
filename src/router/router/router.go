@@ -47,9 +47,12 @@ type Router struct {
 func New(cfg Config) (*Router, error) {
 	if len(cfg.Nodes) < storage.ReplicationFactor {
 		return nil, storage.ErrNotEnoughDaemons
-	} else {
-		return &Router{cfg: cfg, lastHB: make(map[storage.ServiceAddr]time.Time)}, nil
 	}
+	ret := Router{cfg: cfg, lastHB: make(map[storage.ServiceAddr]time.Time)}
+	for _, node := range cfg.Nodes {
+		ret.lastHB[node] = time.Now()
+	}
+	return &ret, nil
 }
 
 // Hearbeat registers node in the router.
@@ -59,13 +62,11 @@ func New(cfg Config) (*Router, error) {
 // Возвращает ошибку storage.ErrUnknownDaemon если node не
 // обслуживается Router.
 func (r *Router) Heartbeat(node storage.ServiceAddr) error {
-	for _, v := range r.cfg.Nodes {
-		if v == node {
-			r.Lock()
-			r.lastHB[node] = time.Now()
-			r.Unlock()
-			return nil
-		}
+	r.Lock()
+	defer r.Unlock()
+	if _, ok := r.lastHB[node]; ok {
+		r.lastHB[node] = time.Now()
+		return nil
 	}
 	return storage.ErrUnknownDaemon
 }
