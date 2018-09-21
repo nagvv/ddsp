@@ -1,6 +1,7 @@
 package router
 
 import (
+	"sync"
 	"time"
 
 	"storage"
@@ -31,8 +32,9 @@ type Config struct {
 
 // Router is a router service.
 type Router struct {
-	cfg Config
-	// TODO: implement
+	sync.RWMutex
+	cfg    Config
+	lastHB map[storage.ServiceAddr]time.Time
 }
 
 // New creates a new Router with a given cfg.
@@ -43,11 +45,10 @@ type Router struct {
 // Возвращает ошибку storage.ErrNotEnoughDaemons если в cfg.Nodes
 // меньше чем storage.ReplicationFactor nodes.
 func New(cfg Config) (*Router, error) {
-	// TODO: implement
 	if len(cfg.Nodes) < storage.ReplicationFactor {
 		return nil, storage.ErrNotEnoughDaemons
 	} else {
-		return &Router{cfg}, nil
+		return &Router{cfg: cfg, lastHB: make(map[storage.ServiceAddr]time.Time)}, nil
 	}
 }
 
@@ -58,10 +59,11 @@ func New(cfg Config) (*Router, error) {
 // Возвращает ошибку storage.ErrUnknownDaemon если node не
 // обслуживается Router.
 func (r *Router) Heartbeat(node storage.ServiceAddr) error {
-	// TODO: implement
 	for _, v := range r.cfg.Nodes {
 		if v == node {
-			//register node to-doo!
+			r.Lock()
+			r.lastHB[node] = time.Now()
+			r.Unlock()
 			return nil
 		}
 	}
@@ -76,15 +78,24 @@ func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 // запись с ключом k. Возвращает ошибку storage.ErrNotEnoughDaemons
 // если меньше, чем storage.MinRedundancy найдено.
 func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
-	// TODO: implement
-	//РАНДЕВООХЭШ!
-	return nil, nil
+	temp := r.cfg.NodesFinder.NodesFind(k, r.cfg.Nodes)
+	ret := make([]storage.ServiceAddr, 0, len(temp))
+	for _, node := range temp {
+		r.RLock()
+		if time.Now().Sub(r.lastHB[node]) < r.cfg.ForgetTimeout {
+			ret = append(ret, node)
+		}
+		r.RUnlock()
+	}
+	if len(ret) < storage.MinRedundancy {
+		return nil, storage.ErrNotEnoughDaemons
+	}
+	return ret, nil
 }
 
 // List returns a list of all nodes served by Router.
 //
 // List возвращает cписок всех node, обслуживаемых Router.
 func (r *Router) List() []storage.ServiceAddr {
-	// TODO: implement
 	return r.cfg.Nodes
 }
