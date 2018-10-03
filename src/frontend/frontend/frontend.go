@@ -1,11 +1,12 @@
 package frontend
 
 import (
-	"time"
-
+	"bytes"
 	rclient "router/client"
 	"router/router"
 	"storage"
+	"sync"
+	"time"
 )
 
 // InitTimeout is a timeout to wait after unsuccessful List() request to Router.
@@ -40,6 +41,8 @@ type Config struct {
 type Frontend struct {
 	// TODO: implement
 	cfg Config
+	list []storage.ServiceAddr
+	sync.RWMutex
 }
 
 // New creates a new Frontend with a given cfg.
@@ -57,14 +60,25 @@ func New(cfg Config) *Frontend {
 // не существует. Иначе вернуть ошибку.
 func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 	// TODO: implement
-	storages, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)
+	//NF.NodesFind(k, []nodes) возвращает целевые ноды из данных нодов, использует хеш
+	//в NC нету nodesfind
+	allnodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)//больше всего похоже на пункт 1, возвращает какие то ноды
 	if e != nil {
 		return e
 	}
-	nodes := fe.cfg.NF.NodesFind(k, storages)
-	for _, node := range nodes {
-		fe.cfg.NC.Put(node, k, d)
+	if len(allnodes) < storage.MinRedundancy {
+		return storage.ErrNotEnoughDaemons
 	}
+	//RC.NodesFind не имеет проверки на количество нодов + пункт 2 => нужно добавть NF.NodesFind
+	//nodes := fe.cfg.NF.NodesFind(k, allnodes)//но NF.NodesFind падает, т.к. внутри него hasher = nil
+	for _, node := range allnodes {
+		e := fe.cfg.NC.Put(node, k, d)
+		if e != nil {
+			return storage.ErrQuorumNotReached
+		}
+	}
+
+
 	return nil
 }
 
@@ -75,13 +89,22 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Del(k storage.RecordID) error {
 	// TODO: implement
-	storages, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)
+	//NF.NodesFind(k, []nodes) возвращает целевые ноды из данных нодов, использует хеш
+	//в NC нету nodesfind
+	allnodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)//больше всего похоже на пункт 1, возвращает какие то ноды
 	if e != nil {
 		return e
 	}
-	nodes := fe.cfg.NF.NodesFind(k, storages)
-	for _, node := range nodes {
-		fe.cfg.NC.Del(node, k)
+	if len(allnodes) < storage.MinRedundancy {
+		return storage.ErrNotEnoughDaemons
+	}
+	//RC.NodesFind не имеет проверки на количество нодов + пункт 2 => нужно добавть NF.NodesFind
+	//nodes := fe.cfg.NF.NodesFind(k, allnodes)//но NF.NodesFind падает, т.к. внутри него hasher = nil
+	for _, node := range allnodes {
+	 	e := fe.cfg.NC.Del(node, k)
+		if e!=nil {
+			return storage.ErrQuorumNotReached
+		}
 	}
 	return nil
 }
@@ -93,19 +116,42 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 	// TODO: implement
-	var storages []storage.ServiceAddr
 	var e error
-	for {
-		storages, e = fe.cfg.RC.List(fe.cfg.Router)
-		if e == nil {
-			break
+	fe.Lock()
+	if len(fe.list) == 0 {
+		for {
+			fe.list, e = fe.cfg.RC.List(fe.cfg.Router)
+			if e == nil {
+				break
+			}
+			time.Sleep(InitTimeout)
 		}
-		time.Sleep(InitTimeout)
 	}
-	nodes := fe.cfg.NF.NodesFind(k, storages)
-	var d []byte
+	fe.Unlock()
+	nodes := fe.cfg.NF.NodesFind(k, fe.list)
+	var dt [][]byte
+	var et []error
 	for _, node := range nodes {
-		d, e = fe.cfg.NC.Get(node, k)
+		td, e := fe.cfg.NC.Get(node, k)
+		if e==nil {
+			dt = append(dt, td)
+			for i := 0; i < len(dt)-1; i++ {
+				for j := i + 1; j < len(dt); j++ {
+					if bytes.Equal(dt[i], dt[j]) {
+						return dt[i], nil
+					}
+				}
+			}
+		} else {
+			et = append(et, e)
+			for i := 0; i < len(et)-1; i++ {
+				for j := i + 1; j < len(et); j++ {
+					if et[i]==et[j] {
+						return nil, et[i]
+					}
+				}
+			}
+		}
 	}
-	return d, nil
+	return nil, storage.ErrQuorumNotReached
 }
