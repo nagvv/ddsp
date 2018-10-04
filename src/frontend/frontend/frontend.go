@@ -2,11 +2,12 @@ package frontend
 
 import (
 	"bytes"
+	"sync"
+	"time"
+
 	rclient "router/client"
 	"router/router"
 	"storage"
-	"sync"
-	"time"
 )
 
 // InitTimeout is a timeout to wait after unsuccessful List() request to Router.
@@ -39,17 +40,15 @@ type Config struct {
 
 // Frontend is a frontend service.
 type Frontend struct {
-	// TODO: implement
-	cfg Config
+	cfg  Config
 	list []storage.ServiceAddr
-	sync.RWMutex
+	sync.Mutex
 }
 
 // New creates a new Frontend with a given cfg.
 //
 // New создает новый Frontend с данным cfg.
 func New(cfg Config) *Frontend {
-	// TODO: implement
 	return &Frontend{cfg: cfg}
 }
 
@@ -59,21 +58,24 @@ func New(cfg Config) *Frontend {
 // Put -- добавить запись в хранилище, если запись для данного ключа
 // не существует. Иначе вернуть ошибку.
 func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
-	// TODO: implement
-	//NF.NodesFind(k, []nodes) возвращает целевые ноды из данных нодов, использует хеш
-	//в NC нету nodesfind
-	allnodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)//больше всего похоже на пункт 1, возвращает какие то ноды
+	nodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)
 	if e != nil {
 		return e
 	}
-	if len(allnodes) < storage.MinRedundancy {
+	if len(nodes) < storage.MinRedundancy {
 		return storage.ErrNotEnoughDaemons
 	}
-	//RC.NodesFind не имеет проверки на количество нодов + пункт 2 => нужно добавть NF.NodesFind
-	//nodes := fe.cfg.NF.NodesFind(k, allnodes)//но NF.NodesFind падает, т.к. внутри него hasher = nil
+
 	var et []error
-	for _, node := range allnodes {
-		e := fe.cfg.NC.Put(node, k, d)
+	ch := make(chan error, len(nodes))
+	for _, node := range nodes {
+		go func(node storage.ServiceAddr) {
+			ch <- fe.cfg.NC.Put(node, k, d)
+		}(node)
+	}
+
+	for range nodes {
+		e := <-ch
 		if e != nil {
 			et = append(et, e)
 			for i := 0; i < len(et)-1; i++ {
@@ -98,22 +100,25 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 // Del -- удалить запись из хранилища, если запись для данного ключа
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Del(k storage.RecordID) error {
-	// TODO: implement
-	//NF.NodesFind(k, []nodes) возвращает целевые ноды из данных нодов, использует хеш
-	//в NC нету nodesfind
-	allnodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)//больше всего похоже на пункт 1, возвращает какие то ноды
+	nodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)
 	if e != nil {
 		return e
 	}
-	if len(allnodes) < storage.MinRedundancy {
+	if len(nodes) < storage.MinRedundancy {
 		return storage.ErrNotEnoughDaemons
 	}
-	//RC.NodesFind не имеет проверки на количество нодов + пункт 2 => нужно добавть NF.NodesFind
-	//nodes := fe.cfg.NF.NodesFind(k, allnodes)//но NF.NodesFind падает, т.к. внутри него hasher = nil
+
 	var et []error
-	for _, node := range allnodes {
-	 	e := fe.cfg.NC.Del(node, k)
-		if e!=nil {
+	ch := make(chan error, len(nodes))
+	for _, node := range nodes {
+		go func(node storage.ServiceAddr) {
+			ch <- fe.cfg.NC.Del(node, k)
+		}(node)
+	}
+
+	for range nodes {
+		e := <-ch
+		if e != nil {
 			et = append(et, e)
 			for i := 0; i < len(et)-1; i++ {
 				for j := i + 1; j < len(et); j++ {
@@ -124,6 +129,7 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 			}
 		}
 	}
+
 	if len(et) > 0 {
 		return storage.ErrQuorumNotReached
 	}
@@ -136,11 +142,10 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 // Get -- получить запись из хранилища, если запись для данного ключа
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
-	// TODO: implement
-	var e error
 	fe.Lock()
 	if len(fe.list) == 0 {
 		for {
+			var e error
 			fe.list, e = fe.cfg.RC.List(fe.cfg.Router)
 			if e == nil {
 				break
@@ -152,9 +157,21 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 	nodes := fe.cfg.NF.NodesFind(k, fe.list)
 	var dt [][]byte
 	var et []error
+	che := make(chan error, len(nodes))
+	chd := make(chan []byte, len(nodes))
+
 	for _, node := range nodes {
-		td, e := fe.cfg.NC.Get(node, k)
-		if e==nil {
+		go func(node storage.ServiceAddr) {
+			td, te := fe.cfg.NC.Get(node, k)
+			chd <- td
+			che <- te
+		}(node)
+	}
+
+	for range nodes {
+		td := <-chd
+		e := <-che
+		if e == nil {
 			dt = append(dt, td)
 			for i := 0; i < len(dt)-1; i++ {
 				for j := i + 1; j < len(dt); j++ {
@@ -167,7 +184,7 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 			et = append(et, e)
 			for i := 0; i < len(et)-1; i++ {
 				for j := i + 1; j < len(et); j++ {
-					if et[i]==et[j] {
+					if et[i] == et[j] {
 						return nil, et[i]
 					}
 				}
