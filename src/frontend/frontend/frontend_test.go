@@ -256,7 +256,7 @@ func TestPutDel_Timing(t *testing.T) {
 		t.Errorf("Del() error  %v", err)
 	}
 	if diff := time.Since(start); !eqTime(diff, 3*sleep) {
-		t.Errorf("Put() took too long")
+		t.Errorf("Del() took too long")
 	}
 }
 
