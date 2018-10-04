@@ -71,14 +71,24 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 	}
 	//RC.NodesFind не имеет проверки на количество нодов + пункт 2 => нужно добавть NF.NodesFind
 	//nodes := fe.cfg.NF.NodesFind(k, allnodes)//но NF.NodesFind падает, т.к. внутри него hasher = nil
+	var et []error
 	for _, node := range allnodes {
 		e := fe.cfg.NC.Put(node, k, d)
 		if e != nil {
-			return storage.ErrQuorumNotReached
+			et = append(et, e)
+			for i := 0; i < len(et)-1; i++ {
+				for j := i + 1; j < len(et); j++ {
+					if et[i] == et[j] {
+						return et[i]
+					}
+				}
+			}
 		}
 	}
 
-
+	if len(et) > 0 {
+		return storage.ErrQuorumNotReached
+	}
 	return nil
 }
 
@@ -100,11 +110,22 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 	}
 	//RC.NodesFind не имеет проверки на количество нодов + пункт 2 => нужно добавть NF.NodesFind
 	//nodes := fe.cfg.NF.NodesFind(k, allnodes)//но NF.NodesFind падает, т.к. внутри него hasher = nil
+	var et []error
 	for _, node := range allnodes {
 	 	e := fe.cfg.NC.Del(node, k)
 		if e!=nil {
-			return storage.ErrQuorumNotReached
+			et = append(et, e)
+			for i := 0; i < len(et)-1; i++ {
+				for j := i + 1; j < len(et); j++ {
+					if et[i] == et[j] {
+						return et[i]
+					}
+				}
+			}
 		}
+	}
+	if len(et) > 0 {
+		return storage.ErrQuorumNotReached
 	}
 	return nil
 }
