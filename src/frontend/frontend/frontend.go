@@ -68,6 +68,14 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 
 	var et []error
 	ch := make(chan error, len(nodes))
+
+	go func() {
+		time.Sleep(800*time.Millisecond)
+		for range nodes {
+			ch <- nil
+		}
+	}()
+
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
 			ch <- fe.cfg.NC.Put(node, k, d)
@@ -75,18 +83,20 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 	}
 
 	for range nodes {
-		e := <-ch
-		if e != nil {
+		e:=<-ch
+		if e!=nil {
 			et = append(et, e)
-			for i := 0; i < len(et)-1; i++ {
-				for j := i + 1; j < len(et); j++ {
-					if et[i] == et[j] {
-						return et[i]
-					}
-				}
+		}
+	}
+
+	for i := 0; i < len(et)-1; i++ {
+		for j := i + 1; j < len(et); j++ {
+			if et[i] == et[j] {
+				return et[i]
 			}
 		}
 	}
+
 
 	if len(et) > 0 {
 		return storage.ErrQuorumNotReached
@@ -110,6 +120,14 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 
 	var et []error
 	ch := make(chan error, len(nodes))
+
+	go func() {
+		time.Sleep(800*time.Millisecond)
+		for range nodes {
+			ch <- nil
+		}
+	}()
+
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
 			ch <- fe.cfg.NC.Del(node, k)
@@ -117,15 +135,16 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 	}
 
 	for range nodes {
-		e := <-ch
-		if e != nil {
+		e:=<-ch
+		if e!=nil {
 			et = append(et, e)
-			for i := 0; i < len(et)-1; i++ {
-				for j := i + 1; j < len(et); j++ {
-					if et[i] == et[j] {
-						return et[i]
-					}
-				}
+		}
+	}
+
+	for i := 0; i < len(et)-1; i++ {
+		for j := i + 1; j < len(et); j++ {
+			if et[i] == et[j] {
+				return et[i]
 			}
 		}
 	}
@@ -159,6 +178,14 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 	var et []error
 	che := make(chan error, len(nodes))
 	chd := make(chan []byte, len(nodes))
+
+	go func() {
+		time.Sleep(800*time.Millisecond)
+		for range nodes {
+			chd <- nil
+			che <- nil
+		}
+	}()
 
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
