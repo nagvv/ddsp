@@ -66,15 +66,15 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 		return storage.ErrNotEnoughDaemons
 	}
 
-	var et []error
+	et := make(map[error]int)
 	ch := make(chan error, len(nodes))
 
-	go func() {
+	/*go func() {
 		time.Sleep(800*time.Millisecond)
 		for range nodes {
 			ch <- nil
 		}
-	}()
+	}()*/
 
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
@@ -85,23 +85,21 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 	for range nodes {
 		e:=<-ch
 		if e!=nil {
-			et = append(et, e)
+			et[e]++
 		}
 	}
 
-	for i := 0; i < len(et)-1; i++ {
-		for j := i + 1; j < len(et); j++ {
-			if et[i] == et[j] {
-				return et[i]
-			}
+	for e, n := range et {
+		if n >= storage.MinRedundancy {
+			return e
 		}
 	}
 
-
-	if len(et) > 0 {
-		return storage.ErrQuorumNotReached
+	if len(nodes) - len(et) >= storage.MinRedundancy {
+		return nil
 	}
-	return nil
+
+	return storage.ErrQuorumNotReached
 }
 
 // Del an item from the storage if an item exists for the given key.
@@ -118,15 +116,15 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 		return storage.ErrNotEnoughDaemons
 	}
 
-	var et []error
+	et := make(map[error]int)
 	ch := make(chan error, len(nodes))
 
-	go func() {
+	/*go func() {
 		time.Sleep(800*time.Millisecond)
 		for range nodes {
 			ch <- nil
 		}
-	}()
+	}()*/
 
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
@@ -137,22 +135,21 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 	for range nodes {
 		e:=<-ch
 		if e!=nil {
-			et = append(et, e)
+			et[e]++
 		}
 	}
 
-	for i := 0; i < len(et)-1; i++ {
-		for j := i + 1; j < len(et); j++ {
-			if et[i] == et[j] {
-				return et[i]
-			}
+	for e, n := range et {
+		if n >= storage.MinRedundancy {
+			return e
 		}
 	}
 
-	if len(et) > 0 {
-		return storage.ErrQuorumNotReached
+	if len(nodes) - len(et) >= storage.MinRedundancy {
+		return nil
 	}
-	return nil
+
+	return storage.ErrQuorumNotReached
 }
 
 // Get an item from the storage if an item exists for the given key.
@@ -179,13 +176,13 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 	che := make(chan error, len(nodes))
 	chd := make(chan []byte, len(nodes))
 
-	go func() {
+	/*go func() {
 		time.Sleep(800*time.Millisecond)
 		for range nodes {
 			chd <- nil
 			che <- nil
 		}
-	}()
+	}()*/
 
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
