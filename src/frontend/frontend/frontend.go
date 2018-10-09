@@ -52,12 +52,7 @@ func New(cfg Config) *Frontend {
 	return &Frontend{cfg: cfg}
 }
 
-// Put an item to the storage if an item for the given key doesn't exist.
-// Returns error otherwise.
-//
-// Put -- добавить запись в хранилище, если запись для данного ключа
-// не существует. Иначе вернуть ошибку.
-func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
+func (fe *Frontend) pudel(k storage.RecordID, job func(node storage.ServiceAddr) error) error {
 	nodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)
 	if e != nil {
 		return e
@@ -69,22 +64,15 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 	et := make(map[error]int)
 	ch := make(chan error, len(nodes))
 
-	/*go func() {
-		time.Sleep(800*time.Millisecond)
-		for range nodes {
-			ch <- nil
-		}
-	}()*/
-
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
-			ch <- fe.cfg.NC.Put(node, k, d)
+			ch <- job(node)
 		}(node)
 	}
 
 	for range nodes {
-		e:=<-ch
-		if e!=nil {
+		e := <-ch
+		if e != nil {
 			et[e]++
 		}
 	}
@@ -95,11 +83,22 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 		}
 	}
 
-	if len(nodes) - len(et) >= storage.MinRedundancy {
+	if len(nodes)-len(et) >= storage.MinRedundancy {
 		return nil
 	}
 
 	return storage.ErrQuorumNotReached
+}
+
+// Put an item to the storage if an item for the given key doesn't exist.
+// Returns error otherwise.
+//
+// Put -- добавить запись в хранилище, если запись для данного ключа
+// не существует. Иначе вернуть ошибку.
+func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
+	return fe.pudel(k, func(node storage.ServiceAddr) error {
+		return fe.cfg.NC.Put(node, k, d)
+	})
 }
 
 // Del an item from the storage if an item exists for the given key.
@@ -108,48 +107,9 @@ func (fe *Frontend) Put(k storage.RecordID, d []byte) error {
 // Del -- удалить запись из хранилища, если запись для данного ключа
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Del(k storage.RecordID) error {
-	nodes, e := fe.cfg.RC.NodesFind(fe.cfg.Router, k)
-	if e != nil {
-		return e
-	}
-	if len(nodes) < storage.MinRedundancy {
-		return storage.ErrNotEnoughDaemons
-	}
-
-	et := make(map[error]int)
-	ch := make(chan error, len(nodes))
-
-	/*go func() {
-		time.Sleep(800*time.Millisecond)
-		for range nodes {
-			ch <- nil
-		}
-	}()*/
-
-	for _, node := range nodes {
-		go func(node storage.ServiceAddr) {
-			ch <- fe.cfg.NC.Del(node, k)
-		}(node)
-	}
-
-	for range nodes {
-		e:=<-ch
-		if e!=nil {
-			et[e]++
-		}
-	}
-
-	for e, n := range et {
-		if n >= storage.MinRedundancy {
-			return e
-		}
-	}
-
-	if len(nodes) - len(et) >= storage.MinRedundancy {
-		return nil
-	}
-
-	return storage.ErrQuorumNotReached
+	return fe.pudel(k, func(node storage.ServiceAddr) error {
+		return fe.cfg.NC.Del(node, k)
+	})
 }
 
 // Get an item from the storage if an item exists for the given key.
@@ -170,19 +130,12 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 		}
 	}
 	fe.Unlock()
+
 	nodes := fe.cfg.NF.NodesFind(k, fe.list)
 	var dt [][]byte
 	var et []error
 	che := make(chan error, len(nodes))
 	chd := make(chan []byte, len(nodes))
-
-	/*go func() {
-		time.Sleep(800*time.Millisecond)
-		for range nodes {
-			chd <- nil
-			che <- nil
-		}
-	}()*/
 
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
@@ -204,6 +157,7 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 					}
 				}
 			}
+			continue
 		} else {
 			et = append(et, e)
 			for i := 0; i < len(et)-1; i++ {
@@ -213,6 +167,7 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 					}
 				}
 			}
+			continue
 		}
 	}
 	return nil, storage.ErrQuorumNotReached
