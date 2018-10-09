@@ -41,6 +41,7 @@ type Config struct {
 type Frontend struct {
 	cfg  Config
 	list []storage.ServiceAddr
+	once sync.Once
 }
 
 // New creates a new Frontend with a given cfg.
@@ -116,8 +117,7 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 // Get -- получить запись из хранилища, если запись для данного ключа
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
-	var once sync.Once
-	once.Do(func() {
+	fe.once.Do(func() {
 		if len(fe.list) == 0 {
 			for {
 				var err error
