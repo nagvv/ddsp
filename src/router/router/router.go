@@ -81,13 +81,14 @@ func (r *Router) Heartbeat(node storage.ServiceAddr) error {
 func (r *Router) NodesFind(k storage.RecordID) ([]storage.ServiceAddr, error) {
 	temp := r.cfg.NodesFinder.NodesFind(k, r.cfg.Nodes)
 	ret := make([]storage.ServiceAddr, 0, len(temp))
+	tNow := time.Now()
+	r.RLock()
 	for _, node := range temp {
-		r.RLock()
-		if time.Now().Sub(r.lastHB[node]) < r.cfg.ForgetTimeout {
+		if tNow.Sub(r.lastHB[node]) < r.cfg.ForgetTimeout {
 			ret = append(ret, node)
 		}
-		r.RUnlock()
 	}
+	r.RUnlock()
 	if len(ret) < storage.MinRedundancy {
 		return nil, storage.ErrNotEnoughDaemons
 	}

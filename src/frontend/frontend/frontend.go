@@ -131,31 +131,36 @@ func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
 	})
 
 	nodes := fe.cfg.NF.NodesFind(k, fe.list)
-	dt := make(map[string]int)
-	et := make(map[error]int)
-	che := make(chan error, len(nodes))
-	chd := make(chan []byte, len(nodes))
+	dataMap := make(map[string]int)
+	errorMap := make(map[error]int)
+
+	type result struct {
+		data []byte
+		err error
+	}
+
+	resChan := make(chan result, len(nodes))
 
 	for _, node := range nodes {
 		go func(node storage.ServiceAddr) {
-			td, te := fe.cfg.NC.Get(node, k)
-			chd <- td
-			che <- te
+			tempData, tempError := fe.cfg.NC.Get(node, k)
+			resChan <- result{tempData, tempError}
 		}(node)
 	}
 
 	for range nodes {
-		td := <-chd
-		err := <-che
+		result := <-resChan
+		err := result.err
+		data := result.data
 		if err == nil {
-			dt[string(td)]++
-			if dt[string(td)] >= storage.MinRedundancy {
-				return td, nil
+			dataMap[string(data)]++
+			if dataMap[string(data)] >= storage.MinRedundancy {
+				return data, nil
 			}
 			continue
 		}
-		et[err]++
-		if et[err] >= storage.MinRedundancy {
+		errorMap[err]++
+		if errorMap[err] >= storage.MinRedundancy {
 			return nil, err
 		}
 	}
