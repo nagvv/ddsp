@@ -117,16 +117,14 @@ func (fe *Frontend) Del(k storage.RecordID) error {
 // Get -- получить запись из хранилища, если запись для данного ключа
 // существует. Иначе вернуть ошибку.
 func (fe *Frontend) Get(k storage.RecordID) ([]byte, error) {
-	fe.once.Do(func() {
-		if len(fe.list) == 0 {
-			for {
-				var err error
-				fe.list, err = fe.cfg.RC.List(fe.cfg.Router)
-				if err == nil {
-					break
-				}
-				time.Sleep(InitTimeout)
+	fe.once.Do(func() {		
+		for {
+			var err error
+			fe.list, err = fe.cfg.RC.List(fe.cfg.Router)
+			if err == nil {
+				break
 			}
+			time.Sleep(InitTimeout)
 		}
 	})
 
